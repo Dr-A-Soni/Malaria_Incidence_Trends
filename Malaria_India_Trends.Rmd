@@ -1,0 +1,374 @@
+---
+title: "Predictive Time Series Modeling of Malaria Incidence in India: A 20-Year Retrospective and 5-Year Forecast."
+
+author:
+    name: Dr Ami Soni
+
+
+output: html_document
+
+
+abstract: >
+         This study presents a predictive time series analysis of malaria incidence in India, utilizing a two-decade dataset. Malaria, caused by Plasmodium species and transmitted by Anopheles mosquitoes, poses a significant public health challenge in the WHO South-East Asia Region. We employed linear regression and ARIMA modeling techniques to analyze historical incidence data, ensuring rigorous data cleaning for accuracy. Results indicate a statistically significant declining trend in malaria cases, with projections suggesting continued decreases in malaria cases over the next five years. These findings highlight the effectiveness of current malaria elimination strategies in India and underscore the necessity for sustained public health interventions. Ultimately, this study emphasizes the importance of data-driven approaches for understanding and forecasting malaria trends, contributing to the goal of malaria eradication by 2030.
+
+---
+**keywords:** Malaria, Predictive Time Series Analysis, ARIMA ,Linear Regression, Public health, India, Malaria incidence, Malaria eradication, Public health strategies.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+### Introduction
+
+Malaria is a potentially life-threatening illness caused by several parasitic species, namely *Plasmodium vivax*, *Plasmodium falciparum*, *Plasmodium malariae*, and *Plasmodium ovale*. It is transmitted through the bite of infected female Anopheles mosquitoes.(1) In 2022, there were approximately 249 million of malaria cases globally reported across 85 endemic countries and regions, reflecting an increase of 5 million cases compared from the previous year.(2)
+
+```{r, echo = FALSE}
+
+# Load all necessary packages:
+
+ pacman::p_load(ggplot2,           # For Visualization of Graph
+              rio,        # For import and export
+              here,        # File locator
+              tidyverse,     # For Data management and visualisation
+              plotly,       # For interactive graphs
+              forecast,      # Fit sin and cosin terms to data
+              tseries,      # For Time Series analysis
+              ggpubr,       # Simplyfies plots and customisation.
+              gt)         # To generate tables.
+
+
+Malaria <- import("D:/Downloads/Data/442CEA8_ALL_LATEST.csv")
+
+Malaria <- Malaria %>% select(5,11:14)
+
+colnames(Malaria) <- c("Time", "Country", "Rate_per_1000_N", "Lower_bound", "Upper_bound")
+
+Malaria <- Malaria %>% arrange(Country,Time) %>% slice(-c(1:23))
+
+Malaria_World <- Malaria %>% filter(Country == "World")
+Malaria_South_East_Asia <- Malaria %>% filter(Country == "South-East Asia")
+Malaria_India <- Malaria %>% filter(Country == "India")
+
+```
+
+Within the WHO South-East Asia Region, nine countries were identified as malaria-endemic, contributing to 5.2 million cases, which represented 2% of the global malaria burden.(1)
+India's considerable malaria case load places it among the eleven countries with the highest burden, which collectively account for 70% of the global incidence of malaria as seen in Figure, with the remaining ten countries located in Africa. India accounted for roughly 65.7% of all malaria cases within this region, with nearly 46% of cases attributed to *P. vivax*. Together, India and Indonesia were responsible for 94% of malaria-related fatalities in the region in 2022.(4)
+
+```{r,Malaria, echo = FALSE, fig.cap = "Figure 1: Malaria incidence in World, South-East Asia and India (2000-2022)", out.width = "60%", fig.align = "center"}
+# Convert to time series object
+# 1) World:
+ts_world <- ts(Malaria_World$Rate_per_1000_N, start = 2000, end = 2022, frequency = 1)
+
+
+# 2) South-East Asia:
+
+ts_South_East_Asia <- ts(Malaria_South_East_Asia$Rate_per_1000_N, start = 2000, end = 2022, frequency = 1)
+
+
+# 3) India:
+ts_India <- ts(Malaria_India$Rate_per_1000_N, start = 2000, end = 2022, frequency = 1)
+
+Malaria_incidence <- Malaria %>% filter(Country %in% c("World","South-East Asia", "India"))
+
+ggplot(Malaria_incidence, aes(x = Time, y = Rate_per_1000_N, color = Country)) +
+    geom_line() +
+    labs(title = "Malaria incidence 2000-2022", y = "Rate per 1000 population at Risk", x = "Year") +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5), axis.text.x =  element_text(face ="bold" ), axis.text.y = element_text(face = "bold"), legend.position = c(0.85,0.85), legend.background = element_rect(fill = "transparent", color = "black"), legend.text = element_text(face = "bold"), legend.title = element_blank()) + scale_color_manual(values =c("purple","orange","blue"), name = "Region") +
+    geom_point()
+
+```
+
+Adopted by the World Health Assembly in May 2015 and revised in 2021, the "Global Technical Strategy for Malaria 2016–2030" guides this initiative. The WHO Global Malaria Programme (GMP) is tasked with coordinating international efforts focused on controlling and ultimately eliminating malaria.
+Aligned with this strategy, the Government of India launched the National Framework for Malaria Elimination 2016–2030 in February 2016, followed by the National Strategic Plan for Malaria Elimination 2017–2022 in July 2017, with assistance from the WHO. India's goal is to attain malaria-free status by 2027 and achieve complete eradication by 2030. Under the NSP 2017-2022, the WHO has supported the acceleration of malaria elimination initiatives across several states. In July 2019, the High Burden to High Impact (HBHI) strategy was introduced in four highly endemic states: West Bengal, Jharkhand, Chhattisgarh, and Madhya Pradesh. Launched in 2018, the WHO's "High Burden, High Impact" initiative seeks to strengthen malaria control efforts in these high-burden nations. A significant challenge in addressing malaria in India lies in the extensive diversity of its ecosystems; approximately 80% of the malaria burden is concentrated in only ten of the 28 states, six of which are located in the northeastern part of the country.(3,4)
+
+```{r, plots, echo = FALSE, fig.cap = "Figure 2: Malaria incidence of India with confidence internval.", out.width = "60%" , fig.align = "center"}
+# Plot the malaria incidence over time in India with confidence Interval:
+
+ggplot(Malaria_India, aes(x = Time, y = Rate_per_1000_N)) +
+      geom_line(aes(color = "Rate per 1000 at risk"), linewidth = 1) +
+      geom_ribbon(aes(ymin = Lower_bound, ymax = Upper_bound, fill = "Confidence Interval"), alpha = 0.2) +
+      labs(title = "Malaria Incidence in India (2000-2022)",
+           x = "Year",
+           y = "Rate per 1000 Population at Risk") +
+      theme_bw(base_size = 13) +
+      scale_color_manual(values = c("Rate per 1000 at risk" = "black")) +
+      scale_fill_manual(values = c("Confidence Interval"= "purple")) +
+      theme(legend.title = element_blank(),
+            legend.position = c(0.8, 0.8),
+            legend.background = element_rect(fill = "transparent", color = "black"),
+            legend.text = element_text(face = "bold"),
+            plot.title = element_text(face = "bold", hjust = 0.5)) +
+            geom_point(color = "black", size = 3) +
+            scale_x_continuous(limits = c(2000,NA), breaks = seq(2000,2022, 2)) +
+            scale_y_continuous(limits = c(0,35)) +
+            theme(axis.text.x =  element_text(face = "bold"), axis.text.y =  element_text(face = "bold"))
+
+
+
+```
+
+#### **Time Series Analysis in Malaria Incidence**
+
+Time series analysis is crucial for understanding and forecasting trends in malaria incidence, particularly in malaria-endemic regions like India. This study employs a 20-year dataset to analyze malaria incidences.
+
+By examining historical data, we identify key components such as trends and irregular fluctuations. Due to the annual frequency of the data and the absence of a clear seasonal component, traditional decomposition methods like `decompose()` or `stl()` function, which generally require a larger dataset to capture seasonal components effectively were skipped. Instead, we utilized linear regression `lm()` and ARIMA `arima()` or `auto.arima()`modeling techniques, ensuring rigorous data cleaning and analysis.
+
+By leveraging these advanced analytical methods, this study aims to provide insights into malaria trends in India, supporting data-driven public health strategies aimed at malaria elimination by 2030. Understanding these trends is essential for guiding interventions in high-burden areas and optimizing resource allocation.
+
+**Linear Regression Model:**
+
+A linear regression model was fitted to the time series to analyse the trend, using the rate per 1000 population at risk as the dependent variable and time as the independent variable. The results were plotted to visualise the time series data alongside the fitted trend line.
+
+```{r, lm, echo = FALSE, fig.cap = "Figure 3: Linear regression model to the time series analysis", out.width = "60%", fig.align = "center", message = FALSE}
+
+# Fit a linear model
+
+trend_model <- lm(Rate_per_1000_N ~ Time, data = Malaria_India)
+
+# Plot the time series with trend line
+
+ggplot(Malaria_India, aes(x = Time)) +
+  geom_line(aes(y = Rate_per_1000_N, color = "Actual Malaria Incidence")) +
+  geom_smooth(aes(y = Rate_per_1000_N, color = "Fitted Regression Line"), method = "lm", se = FALSE) +
+  labs(title = "Malaria Incidence with Trend Line",
+  x = "Year",
+  y = "Rate per 1000 Population at Risk") +
+ theme_bw(base_size = 16) +
+ theme(plot.title = element_text(face = "bold", hjust = 0.5), legend.title = element_blank(), legend.position = c(0.8, 0.8), legend.background = element_rect(fill = "transparent", color = "black"), axis.text.x = element_text(face = "bold"), axis.text.y = element_text(face = "bold")) +
+  scale_color_manual(values = c("blue", "red"),labels = c("Actual Malaria Incidence", "Fitted Regression Line"))
+
+```
+
+**Summary on trend model:**
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+s <- capture.output(summary(trend_model))
+
+
+# Part1: For residuals
+
+rs <- s[6:7]
+rs <-  gsub("\\s+", " ", rs)
+names <- unlist(strsplit(trimws(rs[[1]]), " "))
+values <- unlist(strsplit(trimws(rs[[2]]), " "))
+
+# Create a data frame for residuals
+
+residuals_df <- data.frame(
+  Statistic = names,
+  Value = as.numeric(values)
+)
+
+
+
+# Part2: For coefficients:
+
+# Extracting coefficients
+
+coefficients_raw <- s[10:12]
+coefficients_cleaned <- gsub("\\s+", " ", trimws(unlist(coefficients_raw)))
+
+# Create a data frame for coefficients
+
+coefficients_list <- do.call(rbind, strsplit(coefficients_cleaned, " "))
+
+coefficients_df <- data.frame(
+  Term = coefficients_list[, 1],
+  Estimate = as.numeric(coefficients_list[, 2]),
+  Std_Error = as.numeric(coefficients_list[, 3]),
+  t_value = as.numeric(coefficients_list[, 4]),
+  p_value = coefficients_list[, 5]
+)
+
+coefficients_df <- coefficients_df[-1,]
+
+# create a table using kable
+
+coefficients_df %>% kable(row.names = FALSE, caption = "<strong style ='color:black;text-align: center;'> Table 1a: Coefficients of the Trend model</strong>") %>%
+kable_styling(c("striped", "bordered", "condensed"), full_width = FALSE)
+
+
+multiple_r_squared <- sub("Multiple R-squared:\\s*([0-9.]+),.*", "\\1",s[17])
+adjusted_r_squared <- sub(".*Adjusted R-squared:\\s*([0-9.]+)\\s*.*", "\\1",s[17])
+
+
+f_statistic <- sub("F-statistic:\\s*([0-9.]+).*", "\\1", s[18])
+p_value <- sub(".*p-value:\\s*([0-9.e-]+)", "\\1", s[18])
+
+
+# Creating a data frame
+summary_df <- data.frame(
+  Statistic = c("Multiple R-squared", "Adjusted R-squared", "F-statistic", "p-value"),
+  Value = c(multiple_r_squared, adjusted_r_squared, f_statistic, p_value)
+)
+
+
+rest <-  rbind(residuals_df,summary_df)
+
+rest %>% kable(caption = "<strong style ='color:black;text-align: center;'> Table 1b Residuals & Summary Statistics of the Trend Model</strong>") %>%
+  kable_styling(c("striped", "bordered", "condensed"), full_width = FALSE) %>%
+  pack_rows("Residuals", 1,5, color = "black") %>%
+  pack_rows("Summary Statstic", 6, 9, color = "black")
+
+
+
+```
+
+**Results and Discussion:**
+
+The linear regression analysis of malaria incidence rates reveals significant findings:
+
+  **Coefficients**:
+
+- **Intercept**: The estimated baseline incidence rate at the start of the time series was 1858.76 (p < 0.001), serving as a reference point despite not corresponding to a real value due to the data starting in 2000.
+- **Time**: The coefficient of -0.91779 indicates a significant annual decrease in malaria incidence by approximately 0.92 units (p < 0.001), highlighting a statistically significant downward trend.
+
+**Residuals**:
+  The residuals range from -3.32 to 3.91, suggesting that while the model fits well, there are some unexplained variations.
+
+**Model Fit**:
+
+- **Residual Standard Error**: At 2.031, this value indicates a relatively good fit of the model.
+- **Multiple R-squared**: The model explains about 90.77% of the variability in malaria incidence, demonstrating a strong fit.
+- **Adjusted R-squared**: At 0.9033, this value confirms the model’s robustness while accounting for the number of predictors.
+- **F-statistic**: The value of 206.6, with a p-value of 2.441e-12, indicates that the model is statistically significant overall.
+
+### **Forecasting with ARIMA**
+
+**ARIMA Model and Forecast:**
+
+The `auto.arima()` function was utilised to fit an ARIMA model to the time series. The `forecast(fit, h = 5)` function was subsequently employed to project malaria incidence for the next five years, with forecasts illustrated along with confidence intervals.
+
+**Residuals Check:**
+
+The `checkresiduals(fit)` function evaluates the residuals of the ARIMA model to ensure that no patterns remain unexplained.
+
+```{r, AF, echo = FALSE, fig.cap = "Figure 4: Residuals with Arima Model (0,1,0)", out.width = "60%", fig.align = "center", message = FALSE, warning = FALSE}
+
+library(forecast)
+pacman::p_load(kableExtra)
+# Fit an ARIMA model
+
+fit <- auto.arima(ts_India)
+
+# step1: capture the output
+
+a <- capture.output(checkresiduals(fit))
+
+# Step 2: Extract relevant values
+q_value <- sub("Q\\* = (.*), df.*", "\\1", a[5])  # Extract Q*
+df_value <- sub(".*df = (\\d+).*", "\\1", a[5])   # Extract df value
+p_value <- sub(".*p-value = (.*)", "\\1", a[5])    # Extract p-value
+model_df <- sub("Model df: (.*)\\..*", "\\1", a[7]) # Extract Model df
+total_lags <- sub(".*Total lags used: (.*)", "\\1", a[7]) # Extract Total lags
+
+# Create a data frame
+results_df <- data.frame(
+  Statistic = c("Q*", "Degrees of Freedom", "p-value", "Model df", "Total lags used"),
+  Value = c(
+    q_value,                # Q* value
+    df_value,               # df value
+    p_value,                # p-value
+    model_df,               # Model df
+    total_lags              # Total lags used
+  ),
+  stringsAsFactors = FALSE
+)
+
+# Display the results using kable
+results_df %>%
+  kable(caption = "<strong style ='color:black;text-align: center;'> Table 2: Residuals from ARIMA (0,1,0) with drift</strong>", align = "c") %>%
+  kable_styling(c("striped","condensed","bordered"), full_width = TRUE)
+
+```
+
+**ACF and PACF Analysis:**
+
+The ACF (Autocorrelation Function) and PACF (Partial Autocorrelation Function) plots provide critical diagnostics for evaluating the adequacy of the fitted time series model.
+
+```{r, ACF, echo = FALSE, fig.cap = "Figure 5: ACF and PACF Analysis.", out.width = "60%", fig.align = "center"}
+
+par(mfrow = c(1,2))
+acf(fit$residuals, main = "ACF analysis")
+pacf(fit$residuals, main = "PACF Analysis")
+
+```
+
+**ACF Residuals**:
+
+- The ACF plot indicates minimal autocorrelation among the residuals across various time lags, with most points falling within the confidence interval. This suggests that the model adequately captured the time dependence in the data. Minor spikes outside the bounds, particularly at lag 1, may indicate a slight amount of autocorrelation not captured by the model, though the overall effect is likely minimal.
+
+**PACF Residuals**:
+
+- The PACF plot similarly demonstrates that most partial autocorrelation values lie within the confidence bounds, indicating no significant correlation remains among the residuals after accounting for previous lags. A small spike at lag 1 suggests possible residual short-term autocorrelation, warranting slight adjustments to the model.
+
+**Model Fit:**
+
+Based on the ACF and PACF plots, this study concludes that the time series model has largely succeeded in capturing the underlying structure of the data. The residuals appear to behave like white noise, with negligible autocorrelation remaining, indicating a reasonable model fit.
+
+The small spikes observed at lag 1 in both ACF and PACF suggest minor autocorrelation that the model has not fully accounted for. While this does not pose a significant issue, exploring slight model adjustments could help eliminate any dependencies.
+
+Overall, the model performs well, with residuals predominantly behaving as random noise. The minimal remaining autocorrelation suggests the model is adequate, although further refinement could enhance its performance.
+
+#### **Forecast of Malaria Incidence in India for the Next Five Years**
+
+The projections as seen in Figure \ref(@fig:Forecast), indicate a sustained decline in malaria incidence, reinforcing the positive impact of ongoing public health interventions.
+
+```{r,Forecast, echo = FALSE, fig.cap = "Figure 6: Forecast of Malaria Incidence in India for next 5 years", fig.align = "center", out.width = "60%"}
+
+# Forecast the next 5 years
+forecast_result <- forecast(fit, h = 5)
+
+# Plot the forecast
+plot(forecast_result)
+
+```
+
+In 2023, the projected incidence is approximately **1.77 cases**, declining to **0.99 cases** in 2024. The forecast further decreases to **0.20 cases** in 2025 and shows a negative trend with **-0.59 cases** in 2026 and **-1.37 cases** in 2027, suggesting a significant reduction in malaria incidence. The **80% and 95% confidence intervals** indicate uncertainty in these predictions, with wide ranges reflecting variability in actual cases. For instance, in 2023, the 95% interval spans from **-1.31 to 4.86 cases**. Overall, the forecast suggests a positive downward trend in malaria cases.
+
+```{r, Table, echo = FALSE}
+pacman::p_load(kableExtra,knitr)
+
+forecast_data <- as.data.frame(forecast_result)
+
+# Add Year column
+forecast_data$Year <- seq(from = 2023, by = 1, length.out = nrow(forecast_data))
+
+row.names(forecast_data) <- c(seq(1:5))
+
+forecast_data <- forecast_data %>% select(Year, everything())
+
+
+# Create the table using kable
+
+forecast_data %>% kable(caption = "<strong style ='color:black;text-align: center;'> Table 3: Forecast of Malaria Incidence in India for next five years</strong>",escape = FALSE, align = "c", ) %>%
+    kable_styling(c("striped","condensed","bordered"), full_width = TRUE) %>%
+    row_spec(0,bold = TRUE,color = "black", align = "center")
+
+
+```
+
+#### **Conclusion**
+
+This study provides a comprehensive analysis of malaria incidence in India over the past two decades, utilizing advanced predictive time series modeling techniques. The findings indicate a significant downward trend in malaria cases, aligning with the country's public health initiatives aimed at malaria elimination. The linear regression and ARIMA models effectively captured the historical patterns and projected a continued decline in malaria incidence over the next five years, reinforcing the positive impact of ongoing interventions.
+
+The results emphasize the importance of data-driven approaches in understanding and forecasting malaria trends, which is crucial for policymakers and public health officials. As India strives for malaria-free status by 2027, the study underscores the necessity for sustained efforts and targeted strategies to address remaining challenges, particularly in high-burden regions.
+Continued monitoring and evaluation of malaria trends, coupled with robust healthcare interventions, will be essential to achieving the goal of malaria eradication by 2030. Ultimately, this research contributes to the broader understanding of malaria dynamics in India and supports the development of effective public health strategies to combat this persistent health threat.
+
+**Data Availability:**
+
+The dataset used in this study are available from World Health Oraganization website.(2)
+
+**Source Code:**
+
+The source code for this study is available at GitHub/Dr-A-Soni.
+
+## Reference
+
+1. World Health Organization. Malaria. [Online]. Available at: <https://www.who.int/india/health-topics/malaria> (Accessed: 19 September 2024).
+2. World Health Organization 2024 data.who.int, Malaria incidence (per 1000 population at risk) [Indicator]. <https://data.who.int/indicators/i/B868307/442CEA8> (Accessed on 19 September 2024).
+3. World Health Organization. 2023. World Malaria Report 2022. Geneva: World Health Organization. <https://www.who.int/publications/i/item/9789240086173> (Accessed on 19 September 2024).
+4. World Health Organization. "Southeast Asia Region Malaria Progress Report."  <https://www.who.int/docs/default-source/wrindia/malaria/sear-progress-report-ind.pdf?sfvrsn=6f754bf7_2> (Accessed September 23, 2024).
